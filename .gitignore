@@ -1,27 +1,59 @@
-# Environment Variables (NEVER push secrets)
-.env
-.env.local
+# Environment variables
+**/.env
+**/*.env
 
 # Python
-__pycache__/
-*.py[cod]
-venv/
-env/
-*.egg-info/
+**/__pycache__/
+**/*.py[cod]
+**/$py.class
+**/*.so
+**/.python-eggs/
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/ENV/
+**/env/
 
-# Node/Hardhat
-node_modules/
-cache/
-artifacts/
-typechain/
-coverage/
+# Node
+**/node_modules/
+**/package-lock.json
 
-# Flutter
-frontend/build/
-frontend/.dart_tool/
-frontend/.packages
-frontend/.pub-cache/
+# Flutter/Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/build/
+**/ios/Flutter/.generated.xcconfig
+**/ios/Pods/
+**/android/.gradle/
+**/android/app/google-services.json
+**/ios/GoogleService-Info.plist
+
+# IDE
+**/.idea/
+**/.vscode/
+**/*.iml
+**/.DS_Store
+
+# Blockchain
+**/contracts/artifacts/
+**/contracts/cache/
+**/contracts/.hardhat/
+
+# Edge AI
+**/edge_ai/*.db
+**/edge_ai/violation_*.jpg
+**/edge_ai/*.pt
+
+# Logs
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
 
 # OS
-.DS_Store
-Thumbs.db
+**/Thumbs.db
+**/Desktop.ini
