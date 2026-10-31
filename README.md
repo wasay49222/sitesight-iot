@@ -1,209 +1,142 @@
-# SiteSight IoT - Edge CV & Cyber-Physical Monitoring Dashboard
+# SiteSight IoT
+## Computer-vision event monitoring and logging prototype
 
-![Edge AI](https://img.shields.io/badge/Edge%20AI-YOLOv8-blue)
-![Blockchain](https://img.shields.io/badge/Blockchain-Ethereum-green)
-![Storage](https://img.shields.io/badge/Storage-IPFS-orange)
-![Mobile](https://img.shields.io/badge/Mobile-Flutter-purple)
+A student portfolio project connecting webcam detection, MQTT telemetry, HTTP image uploads, IPFS storage, local Ethereum logging, and a Flutter record viewer.
 
-A cyber-physical safety monitoring system that uses Edge AI to detect site violations, stores evidence immutably on IPFS, logs audit trails to blockchain smart contracts, and alerts managers via a Flutter mobile app.
+**The current detector identifies people and labels those events as simulated safety violations. It does not detect whether a person is wearing a hard hat.**
 
-**Total Cost: $0** - Built entirely with free-tier services and open-source tools.
+## Implementation
 
-## 🎯 Features
+| Component | Current implementation |
+| --- | --- |
+| Webcam detection | A pretrained YOLOv8 nano model detects COCO class 0 (person). |
+| Event simulation | Persistent person detection triggers an event labelled `no_hard_hat` for exercising the pipeline. |
+| Telemetry | The edge script publishes event metadata to `sitesight/telemetry` over MQTT. |
+| Image upload | The script saves a frame and sends it to a FastAPI endpoint over HTTP. |
+| Backend integrations | The endpoint uploads images through Pinata/IPFS, submits a local Ethereum transaction, and inserts a Supabase record. |
+| Smart contract | A Solidity contract records content identifiers, timestamps, camera IDs, and event labels. |
+| Flutter interface | Fetches Supabase records, displays images/metadata, and supports manual refresh. |
+| Failed-upload buffer | Failed HTTP uploads are recorded in local SQLite; automatic replay is not implemented. |
 
-- **Edge AI Detection**: Real-time computer vision using YOLOv8 to detect safety violations (e.g., missing hard hats)
-- **Decentralized Storage**: Violation images stored on IPFS via Pinata (tamper-proof content addressing)
-- **Blockchain Auditing**: Immutable audit logs via Ethereum smart contracts (Hardhat local testnet)
-- **Real-Time Alerts**: MQTT-based telemetry and push notifications to mobile app
-- **Mobile Dashboard**: Flutter app with audit log viewer, GIS map, and live feed
-- **Offline Resilience**: SQLite buffering when backend is unreachable
+Key code: [edge script](edge_ai/main.py), [backend](backend/main.py), [contract](contracts/contracts/SiteSightAudit.sol), [Flutter interface](sitesight_app/lib/main.dart).
 
-## ️ Architecture
-┌─────────────┐ MQTT/HTTP ─────────────┐ IPFS ┌─────────────┐
-│ Edge AI │ ────────────────> │ FastAPI │ ───────────> │ Pinata │
-│ (YOLOv8) │ │ Backend │ │ (IPFS) │
-└───────────── └─────────────┘ └─────────────┘
-│ │
-│ Blockchain │ CID
-▼ │
-┌─────────────┐ │
-│ Hardhat │ │
-│ (Ethereum) │ │
-└─────────────┘ │
-│ │
-│ TX Hash │
-▼ ▼
-┌─────────────────────────────────────┐
-│ Supabase (PostgreSQL) │
-└─────────────────────────────────────┘
-│
-│ Real-time
-▼
-┌─────────────┐
-│ Flutter │
-│ Mobile App │
-└─────────────┘
+### Data flow
 
-## ️ Tech Stack
+1. The edge script detects a person and creates a simulated event.
+2. It publishes MQTT telemetry and separately sends the image to FastAPI.
+3. FastAPI uploads the image to Pinata, submits its CID to a local Hardhat contract, and writes a Supabase row.
+4. Flutter fetches stored rows and loads images through an IPFS gateway.
 
-### Edge Layer
-- **Python 3.11+** with OpenCV
-- **Ultralytics YOLOv8** for object detection
-- **Paho MQTT** for telemetry
-- **SQLite** for offline buffering
+These are implemented code paths requiring service configuration. A successful end-to-end run was not verified during this documentation review.
 
-### Backend
-- **FastAPI** (Python web framework)
-- **Web3.py** for blockchain interaction
-- **Pinata API** for IPFS pinning
-- **Supabase** for database & auth
+## Current limitations
 
-### Blockchain
-- **Hardhat** (Local Ethereum testnet)
-- **Solidity** smart contracts
-- **web3.py** integration
+- **Detection:** No trained helmet/missing-hard-hat classifier is integrated.
+- **Mobile alerts:** MQTT telemetry is published by the edge script, but there is no completed backend/mobile MQTT subscription or push-notification flow.
+- **Live views:** GIS maps, live-video streaming, and real-time mobile subscriptions are not implemented in the reviewed app.
+- **Offline handling:** SQLite records failed uploads, but there is no replay worker. Broker connection failures are also not covered by this HTTP buffer.
+- **Verification button:** The Flutter button opens a public Etherscan URL. Transactions from a local Hardhat chain will not appear there; the button does not independently verify the image or record.
+- **Blockchain scope:** The contract accepts submissions from any caller. Recording a CID does not establish the truth of the detection or the authenticity of the original image.
+- **Storage scope:** Content addressing identifies image bytes; it does not guarantee permanent image availability or make the whole application tamper-proof.
+- **Access control:** The upload route does not authenticate callers. Supabase credentials, schema, and access policies need configuration; complete application access control is not established.
+- **Deployment and cost:** No production deployment or guaranteed zero-cost operation is claimed. External services have their own availability and usage limits.
 
-### Mobile
-- **Flutter** (Cross-platform iOS/Android)
-- **Supabase Flutter** for data sync
-- **MQTT Client** for real-time alerts
-- **Cached Network Image** for IPFS loading
+## Local development
 
-### Infrastructure
-- **Docker** for Mosquitto MQTT broker
-- **Docker** for Edge AI simulation (resource constraints)
+Prerequisites: Python, Node.js/npm, Flutter, Docker Compose, a webcam, and configured Pinata and Supabase projects.
 
-## 📋 Prerequisites
+### 1. Start MQTT
 
-- Python 3.11 or higher
-- Node.js 16+ and npm
-- Flutter 3.0+
-- Docker Desktop
-- Git
+From the repository root:
 
-##  Installation & Setup
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/sitesight-iot.git
-cd sitesight-iot
+docker compose -f docker/docker-compose.yml up -d
+```
 
-2. Environment Setup
-Create .env files in the following locations:
-backend/.env:
+### 2. Compile and deploy the local contract
 
+```bash
+cd contracts
+npm install
+npx hardhat compile
+npx hardhat node
+```
+
+Keep the node running. In another terminal, from `contracts/`:
+
+```bash
+node scripts/deploy.js
+```
+
+Record the deployed address. The deploy script uses a publicly known Hardhat development account intended only for local testing.
+
+### 3. Configure the backend
+
+Create `backend/.env` with your own values:
+
+```dotenv
 SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_service_role_key
-PINATA_JWT=your_pinata_jwt
+SUPABASE_KEY=your_backend_supabase_key
+PINATA_JWT=your_pinata_token
 ETH_RPC_URL=http://127.0.0.1:8545
-PRIVATE_KEY=your_hardhat_account_private_key
+PRIVATE_KEY=your_local_hardhat_test_account_key
 CONTRACT_ADDRESS=your_deployed_contract_address
-MQTT_BROKER_URL=127.0.0.1
-MQTT_PORT=1883
+```
 
-edge_ai/.env
-CAMERA_ID=your_camera_uuid
+Create the Supabase `violations` table and compatible camera-ID/schema configuration for the fields used in [the insert call](backend/main.py). The Flutter view also expects `created_at`. These resources are not provisioned by starting the backend.
+
+In a Python virtual environment, from `backend/`:
+
+```bash
+pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+The backend needs the compiled contract artifact generated in step 2. Check dependency/API compatibility if transaction submission fails.
+
+### 4. Run the edge script
+
+Create `edge_ai/.env`:
+
+```dotenv
+CAMERA_ID=your_compatible_camera_id
 BACKEND_URL=http://127.0.0.1:8000/api/violations
 MQTT_BROKER_URL=127.0.0.1
 MQTT_PORT=1883
+```
 
-sitesight_app/lib/main.dart
-Replace the placeholder constants with your actual Supabase credentials.
-3. Infrastructure Setup
-Start Docker Services:
-cd docker
-docker-compose up -d
-Start Local Blockchain:
-cd contracts
-npm install
-npx hardhat node
-Deploy Smart Contract:
-# In a new terminal (contracts/)
-npx hardhat run scripts/deploy.js --network localhost
-# Copy the deployed contract address to backend/.env
-4. Backend Setup
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-cd edge_ai
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+In a Python virtual environment, from `edge_ai/`:
+
+```bash
 pip install -r requirements.txt
 python main.py
+```
 
-5. Edge AI Setup
-cd edge_ai
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
+A person standing in view triggers the simulation after the frame threshold; press `q` to stop. Timing depends on the actual frame rate.
 
-6. Flutter App Setup
+### 5. Configure the Flutter viewer
+
+Replace placeholder Supabase values in `sitesight_app/lib/main.dart` with the appropriate project URL and client key. Configure database access policies for your own setup. Keep backend service credentials out of the mobile client.
+
+```bash
 cd sitesight_app
 flutter pub get
 flutter run
+```
 
-Project Structure
-sitesight-iot/
-├── backend/              # FastAPI backend
-│   ├── main.py          # Main application
-│   ├── .env             # Environment variables (NOT in Git)
-│   └── requirements.txt # Python dependencies
-── contracts/           # Solidity smart contracts
-│   ├── contracts/
-│   │   ── SiteSightAudit.sol
-│   ├── scripts/
-│   │   └── deploy.js
-│   └── hardhat.config.js
-├── docker/              # Docker configurations
-│   └── docker-compose.yml
-├── edge_ai/            # Edge AI simulation
-│   ├── main.py
-│   ├── .env
-│   └── requirements.txt
-├── sitesight_app/      # Flutter mobile app
-│   ├── lib/
-│   │   ── main.dart
-│   └── pubspec.yaml
-├── .gitignore
-── README.md
+Until the explorer integration is changed, inspect transactions through the local Ethereum RPC rather than relying on the app's Etherscan button.
 
-Course Coverage
-Course
-How It's Covered
-Cyber-Physical Systems
-Bridging physical webcam/hardware with digital cloud infrastructure via Edge AI and MQTT
-Computer Networks
-MQTT protocol for lightweight IoT telemetry, WebSockets for live streaming, HTTP POST for binary data
-Blockchain
-Solidity smart contract development, Hardhat deployment, web3.py integration, immutable audit logging
-Computer Vision
-Ultralytics YOLOv8 object detection, OpenCV frame processing, Edge optimization
-HCI (Flutter UI)
-Designing a high-contrast, real-time mobile dashboard for non-technical site managers
-Remote Sensing/GIS
-Plotting IoT camera nodes and violation events on a geospatial map
+## Next improvements
 
-🔒 Security Considerations
-Tamper-Proof Logs: IPFS content-addressed storage + blockchain immutability
-API Key Security: All sensitive keys stored in .env files (gitignored)
-RLS Policies: Supabase Row Level Security for data access control
-MQTT Security: Production deployment should use TLS/SSL and X.509 certificates
-📝 Development Roadmap
-Edge AI detection with YOLOv8
-FastAPI backend with IPFS integration
-Smart contract deployment
-Flutter mobile app with audit log
-Real-time WebSocket live feed
-GIS map integration with camera markers
-Docker containerization for Edge AI
-Production deployment to Render/Sepolia
-🤝 Contributing
-This is a portfolio project. Feel free to fork and experiment!
-License
-MIT License - See LICENSE file for details
-👨‍💻 Author
-Wasay
-Built with ❤️ using free-tier services and open-source tools
+- Train and integrate a real safety-equipment detector.
+- Complete event subscriptions/mobile alerts and buffered-upload replay.
+- Authenticate uploads and configure record access rules.
+- Replace the explorer button with verification for the configured chain.
+- Add integration tests and a reproducible local demo before deployment.
+
+## Author and license
+
+Syed Muhammad Wasay — BS Artificial Intelligence student, ITU Lahore.
+
+[GitHub](https://github.com/wasay49222) | [MIT License](LICENSE)
+
